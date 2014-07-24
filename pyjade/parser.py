@@ -172,7 +172,8 @@ class Parser(object):
         tok = self.expect('conditional')
         node = nodes.Conditional(tok.val, tok.sentence)
         node.line = self.line()
-        node.block = self.block()
+        if self.peek().type == 'indent':
+            node.block = self.block()
         while True:
             t = self.peek()
             if 'conditional' == t.type and node.can_append(t.val):
