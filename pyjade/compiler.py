@@ -1,6 +1,7 @@
 import re
 import os
 import six
+import itertools
 
 class Compiler(object):
     RE_INTERPOLATE = re.compile(r'(\\)?([#!]){(.*?)}')
@@ -49,6 +50,7 @@ class Compiler(object):
       , 'hr'
     ]
     autocloseCode = 'if,for,block,filter,autoescape,with,trans,spaceless,comment,cache,macro,localize,compress,raw'.split(',')
+    multivalueAttributes = ['class']
 
     filters = {}
 
@@ -316,29 +318,45 @@ class Compiler(object):
     def attributes(self,attrs):
         return "%s__pyjade_attrs(%s)%s" % (self.variable_start_string, attrs, self.variable_end_string)
 
-    def visitDynamicAttributes(self, attrs):
-        buf, classes, params = [], [], {}
+    def visitDynamicAttributes(self, attrs, no_append=False):
+        buf, params = [], {}
         terse='terse=True' if self.terse else ''
         for attr in attrs:
-            if attr['name'] == 'class':
-                classes.append('(%s)' % attr['val'])
-            else:
-                pair = "('%s',(%s))" % (attr['name'], attr['val'])
-                buf.append(pair)
-
-        if classes:
-            classes = " , ".join(classes)
-            buf.append("('class', (%s))" % classes)
+            pair = "('%s',(%s))" % (attr['name'], attr['val'])
+            buf.append(pair)
 
         buf = ', '.join(buf)
         if self.terse: params['terse'] = 'True'
         if buf: params['attrs'] = '[%s]' % buf
         param_string = ', '.join(['%s=%s' % (n, v) for n, v in six.iteritems(params)])
         if buf or terse:
-            self.buf.append(self.attributes(param_string))
+            if no_append:
+                return self.attributes(param_string)
+            else:
+                self.buf.append(self.attributes(param_string))
 
-    def visitAttributes(self, attrs):
+    def visitMultiValueAttributes(self, attrs):
+        sorted_attrs = sorted(attrs, key=lambda a: a['name'])
+        cleaned_attrs = []
+        for attr_name, attr_group in itertools.groupby(sorted_attrs,
+                                                       key=lambda a: a['name']):
+            # import pdb; pdb.set_trace()
+            joined_attr_value = ' '.join(
+                [a['val'][1:-1]
+                 if a['val'].startswith('"') and a['val'].endswith('"')
+                 else self.visitDynamicAttributes([a], no_append=True)
+                 for a in attr_group])
+            new_attr = {'name': attr_name, 'val': '"%s"' % (joined_attr_value,),
+                        'static': True}
+            # import pdb; pdb.set_trace()
+            cleaned_attrs.append(new_attr)
+        self.visitAttributes(cleaned_attrs, no_multi=True)
+
+    def visitAttributes(self, attrs, no_multi=False):
         temp_attrs = []
+        multival_attrs = []
+        # if no_multi:
+        #     import pdb; pdb.set_trace()
         for attr in attrs:
             if (not self.useRuntime and not attr['name']=='class') or attr['static']: #
                 if temp_attrs:
@@ -355,10 +373,13 @@ class Compiler(object):
                         self.buf.append(' %s' % (n,))
                     else:
                         self.buf.append(' %s="%s"' % (n, n))
+            elif (not no_multi) and attr['name'] in self.multivalueAttributes:
+                multival_attrs.append(attr)
             else:
                 temp_attrs.append(attr)
 
         if temp_attrs: self.visitDynamicAttributes(temp_attrs)
+        if multival_attrs: self.visitMultiValueAttributes(multival_attrs)
 
     @classmethod
     def register_filter(cls, name, f):
