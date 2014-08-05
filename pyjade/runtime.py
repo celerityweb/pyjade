@@ -109,7 +109,7 @@ def iteration(obj, num_keys):
     """
 
     # If the object is a mapping type, return it as-is
-    if is_mapping(obj):
+    if is_mapping(obj) or not obj:
         return obj
 
     _marker = []
