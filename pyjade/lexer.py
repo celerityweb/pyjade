@@ -318,7 +318,7 @@ class Lexer(object):
                 ns.literal = ns.literal and (state() not in ('object', 'array',
                                                              'expr'))
                 # print ns, c, states
-                if c in (',', '\n') or (c == ' ' and state() == 'val' and len(states) == 2 and ns.val.strip()):
+                if c in (',', '\n') or (c == ' ' and state() == 'val' and states[-2] == 'key' and ns.val.strip()):
                     s = state()
                     if s in ('expr', 'array', 'string', 'object'):
                         ns.val += c
